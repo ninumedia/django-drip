@@ -1,13 +1,13 @@
 from datetime import datetime, timedelta
 
 from django.test import TestCase
-from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core import mail
 from django.conf import settings
 
 from drip.models import Drip, SentDrip, QuerySetRule
 from drip.drips import DripBase, DripMessage
+from drip.utils import get_user_model
 
 
 class RulesTestCase(TestCase):
@@ -32,69 +32,71 @@ class RulesTestCase(TestCase):
 
 
 class DripsTestCase(TestCase):
+
     def setUp(self):
         """
         Creates 20 users, half of which buy 25 credits a day,
         and the other half that does none.
         """
+        self.User = get_user_model()
+
         start = datetime.now() - timedelta(hours=2)
         num_string = ['first','second','third','fourth','fifth','sixth','seventh','eighth','ninth','tenth']
 
         for i, name in enumerate(num_string):
-            user = User.objects.create(username='%s_25_credits_a_day' % name, email='%s@test.com' % name)
-            User.objects.filter(id=user.id).update(date_joined=start - timedelta(days=i))
+            user = self.User.objects.create(username='%s_25_credits_a_day' % name, email='%s@test.com' % name)
+            self.User.objects.filter(id=user.id).update(date_joined=start - timedelta(days=i))
 
-            profile = user.get_profile()
+            profile = user.profile
             profile.credits = i * 25
             profile.save()
 
         for i, name in enumerate(num_string):
-            user = User.objects.create(username='%s_no_credits' % name, email='%s@test.com' % name)
-            User.objects.filter(id=user.id).update(date_joined=start - timedelta(days=i))
-
+            user = self.User.objects.create(username='%s_no_credits' % name, email='%s@test.com' % name)
+            self.User.objects.filter(id=user.id).update(date_joined=start - timedelta(days=i))
 
     def test_users_exists(self):
-        self.assertEqual(20, User.objects.all().count())
+        self.assertEqual(20, self.User.objects.all().count())
 
     def test_day_zero_users(self):
         start = datetime.now() - timedelta(days=1)
         end = datetime.now()
-        self.assertEqual(2, User.objects.filter(date_joined__range=(start, end)).count())
+        self.assertEqual(2, self.User.objects.filter(date_joined__range=(start, end)).count())
 
     def test_day_two_users_active(self):
         start = datetime.now() - timedelta(days=3)
         end = datetime.now() - timedelta(days=2)
-        self.assertEqual(1, User.objects.filter(date_joined__range=(start, end),
+        self.assertEqual(1, self.User.objects.filter(date_joined__range=(start, end),
                                                 profile__credits__gt=0).count())
 
     def test_day_two_users_inactive(self):
         start = datetime.now() - timedelta(days=3)
         end = datetime.now() - timedelta(days=2)
-        self.assertEqual(1, User.objects.filter(date_joined__range=(start, end),
+        self.assertEqual(1, self.User.objects.filter(date_joined__range=(start, end),
                                                 profile__credits=0).count())
 
     def test_day_seven_users_active(self):
         start = datetime.now() - timedelta(days=8)
         end = datetime.now() - timedelta(days=7)
-        self.assertEqual(1, User.objects.filter(date_joined__range=(start, end),
+        self.assertEqual(1, self.User.objects.filter(date_joined__range=(start, end),
                                                 profile__credits__gt=0).count())
 
     def test_day_seven_users_inactive(self):
         start = datetime.now() - timedelta(days=8)
         end = datetime.now() - timedelta(days=7)
-        self.assertEqual(1, User.objects.filter(date_joined__range=(start, end),
+        self.assertEqual(1, self.User.objects.filter(date_joined__range=(start, end),
                                                 profile__credits=0).count())
 
     def test_day_fourteen_users_active(self):
         start = datetime.now() - timedelta(days=15)
         end = datetime.now() - timedelta(days=14)
-        self.assertEqual(0, User.objects.filter(date_joined__range=(start, end),
+        self.assertEqual(0, self.User.objects.filter(date_joined__range=(start, end),
                                                 profile__credits__gt=0).count())
 
     def test_day_fourteen_users_inactive(self):
         start = datetime.now() - timedelta(days=15)
         end = datetime.now() - timedelta(days=14)
-        self.assertEqual(0, User.objects.filter(date_joined__range=(start, end),
+        self.assertEqual(0, self.User.objects.filter(date_joined__range=(start, end),
                                                 profile__credits=0).count())
 
     ########################
@@ -104,7 +106,7 @@ class DripsTestCase(TestCase):
     def test_get_simple_fields(self):
         from drip.utils import get_simple_fields
 
-        simple_fields = get_simple_fields(User)
+        simple_fields = get_simple_fields(self.User)
         self.assertTrue(bool([sf for sf in simple_fields if 'profile' in sf[0]]))
 
     ##################
@@ -176,7 +178,7 @@ class DripsTestCase(TestCase):
 
         # vanilla (now-8, now-7), past (now-8-3, now-7-3), future (now-8+1, now-7+1)
         for count, shifted_drip in zip([0, 2, 2, 2, 2], drip.walk(into_past=3, into_future=2)):
-            self.assertEquals(count, shifted_drip.get_queryset().count())
+            self.assertEqual(count, shifted_drip.get_queryset().count())
 
         # no reason to change after a send...
         drip.send()
@@ -184,7 +186,7 @@ class DripsTestCase(TestCase):
 
         # vanilla (now-8, now-7), past (now-8-3, now-7-3), future (now-8+1, now-7+1)
         for count, shifted_drip in zip([0, 2, 2, 2, 2], drip.walk(into_past=3, into_future=2)):
-            self.assertEquals(count, shifted_drip.get_queryset().count())
+            self.assertEqual(count, shifted_drip.get_queryset().count())
 
     def test_custom_drip_with_count(self):
         model_drip = self.build_joined_date_drip()
@@ -199,7 +201,7 @@ class DripsTestCase(TestCase):
         self.assertEqual(1, drip.get_queryset().count()) # 1 person meet the criteria
 
         for count, shifted_drip in zip([0, 1, 1, 1, 1], drip.walk(into_past=3, into_future=2)):
-            self.assertEquals(count, shifted_drip.get_queryset().count())
+            self.assertEqual(count, shifted_drip.get_queryset().count())
 
     def test_custom_drip_static_datetime(self):
         model_drip = self.build_joined_date_drip()
@@ -212,7 +214,7 @@ class DripsTestCase(TestCase):
         drip = model_drip.drip
 
         for count, shifted_drip in zip([0, 2, 2, 0, 0], drip.walk(into_past=3, into_future=2)):
-            self.assertEquals(count, shifted_drip.get_queryset().count())
+            self.assertEqual(count, shifted_drip.get_queryset().count())
 
     def test_custom_drip_static_now_datetime(self):
         model_drip = Drip.objects.create(
@@ -230,7 +232,7 @@ class DripsTestCase(TestCase):
 
         # catches "today and yesterday" users
         for count, shifted_drip in zip([4, 4, 4, 4, 4], drip.walk(into_past=3, into_future=3)):
-            self.assertEquals(count, shifted_drip.get_queryset().count())
+            self.assertEqual(count, shifted_drip.get_queryset().count())
 
 
 # Used by CustomMessagesTest
@@ -245,8 +247,10 @@ class PlainDripEmail(DripMessage):
 
 class CustomMessagesTest(TestCase):
     def setUp(self):
+        self.User = get_user_model()
+
         self.old_msg_classes = getattr(settings, 'DRIP_MESSAGE_CLASSES', None)
-        self.user = User.objects.create(username='customuser', email='custom@example.com')
+        self.user = self.User.objects.create(username='customuser', email='custom@example.com')
         self.model_drip = Drip.objects.create(
             name='A Custom Week Ago',
             subject_template='HELLO {{ user.username }}',
@@ -268,16 +272,16 @@ class CustomMessagesTest(TestCase):
 
     def test_default_email(self):
         result = self.model_drip.drip.send()
-        self.assertEquals(1, result)
-        self.assertEquals(1, len(mail.outbox))
+        self.assertEqual(1, result)
+        self.assertEqual(1, len(mail.outbox))
         email = mail.outbox.pop()
         self.assertIsInstance(email, mail.EmailMultiAlternatives)
 
     def test_custom_added_not_used(self):
         settings.DRIP_MESSAGE_CLASSES = {'plain': 'drip.tests.PlainDripEmail'}
         result = self.model_drip.drip.send()
-        self.assertEquals(1, result)
-        self.assertEquals(1, len(mail.outbox))
+        self.assertEqual(1, result)
+        self.assertEqual(1, len(mail.outbox))
         email = mail.outbox.pop()
         # Since we did not specify custom class, default should be used.
         self.assertIsInstance(email, mail.EmailMultiAlternatives)
@@ -287,8 +291,8 @@ class CustomMessagesTest(TestCase):
         self.model_drip.message_class = 'plain'
         self.model_drip.save()
         result = self.model_drip.drip.send()
-        self.assertEquals(1, result)
-        self.assertEquals(1, len(mail.outbox))
+        self.assertEqual(1, result)
+        self.assertEqual(1, len(mail.outbox))
         email = mail.outbox.pop()
         # In this case we did specify the custom key, so message should be of custom type.
         self.assertIsInstance(email, mail.EmailMessage)
@@ -296,7 +300,7 @@ class CustomMessagesTest(TestCase):
     def test_override_default(self):
         settings.DRIP_MESSAGE_CLASSES = {'default': 'drip.tests.PlainDripEmail'}
         result = self.model_drip.drip.send()
-        self.assertEquals(1, result)
-        self.assertEquals(1, len(mail.outbox))
+        self.assertEqual(1, result)
+        self.assertEqual(1, len(mail.outbox))
         email = mail.outbox.pop()
         self.assertIsInstance(email, mail.EmailMessage)

@@ -1,6 +1,9 @@
+SECRET_KEY = 'dripdripdripdripdripdripdrip'
 
 # MUST SPECIFY TO MAKE USE OF DJANGO DRIP
 DRIP_FROM_EMAIL = ''
+
+SECRET_KEY="whatever"
 
 DATABASES = {
     'default': {
@@ -19,5 +22,4 @@ INSTALLED_APPS = (
     'credits',
 )
 
-AUTH_PROFILE_MODULE = 'credits.Profile'
-
+MIDDLEWARE_CLASSES = ()
