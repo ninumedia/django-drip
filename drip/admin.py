@@ -19,6 +19,7 @@ class DripForm(forms.ModelForm):
     )
     class Meta:
         model = Drip
+        exclude = []
 
 
 class DripAdmin(admin.ModelAdmin):
@@ -38,11 +39,14 @@ class DripAdmin(admin.ModelAdmin):
         drip = get_object_or_404(Drip, id=drip_id)
 
         shifted_drips = []
+        seen_users = set()
         for shifted_drip in drip.drip.walk(into_past=int(into_past), into_future=int(into_future)+1):
+            shifted_drip.prune()
             shifted_drips.append({
                 'drip': shifted_drip,
-                'qs': shifted_drip.get_queryset()
+                'qs': shifted_drip.get_queryset().exclude(id__in=seen_users)
             })
+            seen_users.update(shifted_drip.get_queryset().values_list('id', flat=True))
 
         return render(request, 'drip/timeline.html', locals())
 
@@ -50,7 +54,9 @@ class DripAdmin(admin.ModelAdmin):
         from django.shortcuts import render, get_object_or_404
         from django.http import HttpResponse
         drip = get_object_or_404(Drip, id=drip_id)
+        User = get_user_model()
         user = get_object_or_404(User, id=user_id)
+
         drip_message = message_class_for(drip.message_class)(drip.drip, user)
         html = ''
         mime = ''
